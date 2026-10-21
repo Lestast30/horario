@@ -155,6 +155,111 @@ header h1 em {
 }
 .icon-btn:hover { background: var(--surface2); color: var(--fg); }
 
+/* ─── Day nav (mobile) ─── */
+.day-nav {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.day-nav-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 38px; height: 38px;
+  font-size: 1.1rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.day-nav-btn:hover { background: var(--surface2); color: var(--fg); }
+.day-nav-label {
+  font-family: var(--font-d);
+  font-size: 1.3rem;
+  font-weight: 300;
+  color: var(--fg);
+  text-align: center;
+  flex: 1;
+}
+.day-dots {
+  display: flex; gap: 5px; justify-content: center;
+}
+.day-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--fg-dim);
+  transition: background 0.15s, transform 0.15s;
+}
+.day-dot.active { background: var(--c-kryon); transform: scale(1.3); }
+
+/* ─── Mobile day view ─── */
+.mobile-day {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+.mobile-slot {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 56px;
+}
+.mobile-slot.is-break {
+  align-items: center;
+  min-height: 28px;
+}
+.mobile-time {
+  width: 52px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 4px;
+}
+.mobile-time .ts { font-size: 0.72rem; font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+.mobile-time .te { font-size: 0.6rem; color: var(--fg-dim); }
+.mobile-break-label {
+  flex: 1;
+  font-size: 0.65rem;
+  color: var(--fg-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center;
+}
+.mobile-cell {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+}
+.mobile-cell:active { filter: brightness(1.06); }
+.mobile-pill {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 8px 12px;
+  border-radius: 11px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.3;
+}
+.mobile-add-hint {
+  font-size: 1.2rem;
+  color: var(--fg-dim);
+  opacity: 0.5;
+}
+
 /* ─── Table wrapper ─── */
 .tbl-outer {
   overflow-x: auto;
@@ -270,6 +375,17 @@ tbody tr:last-child td { border-bottom: none; }
   pointer-events: none;
 }
 .act-td:hover .add-hint { opacity: 1; }
+
+/* ─── Responsive: mobile hides table, shows day view ─── */
+@media (max-width: 640px) {
+  body { padding-block: 20px 32px; }
+  .tbl-outer { display: none; }
+  .day-nav   { display: flex; }
+  .mobile-day { display: flex; }
+  .toolbar { margin-bottom: 10px; }
+  .legend { gap: 7px; }
+  .leg-item { font-size: 0.67rem; }
+}
 
 /* ─── Modal ─── */
 .overlay {
@@ -392,6 +508,19 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="legend" id="legend"></div>
   <button class="icon-btn" id="themeBtn">☀ / ☾</button>
 </div>
+
+<!-- Day navigator (mobile only) -->
+<div class="day-nav" id="dayNav">
+  <button class="day-nav-btn" id="prevDay">‹</button>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px">
+    <div class="day-nav-label" id="dayNavLabel"></div>
+    <div class="day-dots" id="dayDots"></div>
+  </div>
+  <button class="day-nav-btn" id="nextDay">›</button>
+</div>
+
+<!-- Mobile single-day view -->
+<div class="mobile-day" id="mobileDay"></div>
 
 <div class="tbl-outer">
   <table id="tbl">
@@ -652,13 +781,13 @@ function doSave(){
   const t=document.getElementById('actInput').value.trim();
   if(t) data[currentKey]={t,c:currentColor};
   else delete data[currentKey];
-  save(); render(); closeModal();
+  save(); render(); renderMobile(); closeModal();
 }
 
 function doClear(){
   if(!currentKey) return;
   delete data[currentKey];
-  save(); render(); closeModal();
+  save(); render(); renderMobile(); closeModal();
 }
 
 // ── Events ──────────────────────────────────────────────────────────────────
@@ -678,9 +807,99 @@ document.getElementById('themeBtn').addEventListener('click', ()=>{
   r.setAttribute('data-theme', r.getAttribute('data-theme')==='light' ? 'dark' : 'light');
 });
 
+// ── Mobile day view ─────────────────────────────────────────────────────────
+let currentDay = new Date().getDay(); // 0=dom,1=lun…
+// map JS day → column index (0=Lun … 6=Dom)
+function jsDayToCol(d){ return d===0 ? 6 : d-1; }
+let mobileCol = jsDayToCol(currentDay);
+
+function renderMobile(){
+  const container = document.getElementById('mobileDay');
+  container.innerHTML = '';
+
+  let dataRow = 0;
+  SLOTS.forEach((slot)=>{
+    if(slot === 'BREAK'){
+      const row = document.createElement('div');
+      row.className = 'mobile-slot is-break';
+      const timeEl = document.createElement('div');
+      timeEl.className = 'mobile-time';
+      row.appendChild(timeEl);
+      const lbl = document.createElement('div');
+      lbl.className = 'mobile-break-label';
+      lbl.textContent = '— tarde libre —';
+      row.appendChild(lbl);
+      container.appendChild(row);
+      return;
+    }
+
+    const key = `${dataRow}-${mobileCol}`;
+    const entry = data[key];
+
+    const row = document.createElement('div');
+    row.className = 'mobile-slot';
+
+    const timeEl = document.createElement('div');
+    timeEl.className = 'mobile-time';
+    timeEl.innerHTML = `<span class="ts">${slot.s}</span><span class="te">${slot.e}</span>`;
+    row.appendChild(timeEl);
+
+    const cell = document.createElement('div');
+    cell.className = 'mobile-cell';
+
+    if(entry){
+      const pill = document.createElement('div');
+      pill.className = 'mobile-pill';
+      pill.style.background = hex2rgba(entry.c, 0.22);
+      pill.style.color = entry.c;
+      pill.style.border = `1px solid ${hex2rgba(entry.c, 0.35)}`;
+      pill.textContent = entry.t.replace(/\n/g, ' · ');
+      cell.appendChild(pill);
+    } else {
+      const hint = document.createElement('div');
+      hint.className = 'mobile-add-hint';
+      hint.textContent = '+';
+      cell.appendChild(hint);
+    }
+
+    cell.addEventListener('click', ()=>openModal(key, entry, slot, mobileCol));
+    row.appendChild(cell);
+    container.appendChild(row);
+    dataRow++;
+  });
+
+  // Update dots + label
+  document.getElementById('dayNavLabel').textContent = DAYS[mobileCol];
+  const dots = document.getElementById('dayDots');
+  dots.innerHTML = '';
+  DAYS.forEach((_, i)=>{
+    const d = document.createElement('div');
+    d.className = 'day-dot' + (i===mobileCol?' active':'');
+    dots.appendChild(d);
+  });
+}
+
+document.getElementById('prevDay').addEventListener('click', ()=>{
+  mobileCol = (mobileCol + 6) % 7;
+  renderMobile();
+});
+document.getElementById('nextDay').addEventListener('click', ()=>{
+  mobileCol = (mobileCol + 1) % 7;
+  renderMobile();
+});
+
+// Swipe support
+let touchStartX = 0;
+document.getElementById('mobileDay').addEventListener('touchstart', e=>{ touchStartX=e.touches[0].clientX; }, {passive:true});
+document.getElementById('mobileDay').addEventListener('touchend', e=>{
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if(Math.abs(dx)>50){ mobileCol = dx<0 ? (mobileCol+1)%7 : (mobileCol+6)%7; renderMobile(); }
+}, {passive:true});
+
 // ── Init ────────────────────────────────────────────────────────────────────
 load();
 render();
+renderMobile();
 
 // ── Service Worker (offline) ─────────────────────────────────────────────────
 if('serviceWorker' in navigator){
