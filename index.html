@@ -16,6 +16,38 @@
 <!-- Ícono para iPhone (generado inline) -->
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%230e0c17'/%3E%3Crect x='30' y='50' width='120' height='12' rx='6' fill='%23b89ef5'/%3E%3Crect x='30' y='72' width='80' height='10' rx='5' fill='%2364c5a8'/%3E%3Crect x='30' y='92' width='100' height='10' rx='5' fill='%23f0a06e'/%3E%3Crect x='30' y='112' width='70' height='10' rx='5' fill='%23f07daa'/%3E%3Crect x='30' y='132' width='90' height='10' rx='5' fill='%2390dbb5'/%3E%3C/svg%3E">
 
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAUJmtNL4ePC4W8k8Mg2EUzzryrepprgN0",
+    authDomain: "horario-4bbf8.firebaseapp.com",
+    projectId: "horario-4bbf8",
+    storageBucket: "horario-4bbf8.firebasestorage.app",
+    messagingSenderId: "146413079594",
+    appId: "1:146413079594:web:eb10c22794cdb12634c753"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const docRef = doc(db, 'horario', 'semana');
+
+  // Expose to global scope for the main script
+  window._fbSave = async (data) => {
+    try { await setDoc(docRef, { data: JSON.stringify(data) }); } catch(e){ console.warn('Firebase save error', e); }
+  };
+
+  window._fbListen = (callback) => {
+    onSnapshot(docRef, (snap) => {
+      if(snap.exists()) {
+        try { callback(JSON.parse(snap.data().data)); } catch(e){}
+      }
+    });
+  };
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 
@@ -641,12 +673,30 @@ const DEFAULT = {
 
 const KEY = 'horario_v2';
 let data = {};
+let _ignoreNext = false; // evita loop al recibir el propio cambio
 
 function load(){
   try { const s=localStorage.getItem(KEY); data=s?JSON.parse(s):{...DEFAULT}; }
   catch{ data={...DEFAULT}; }
 }
-function save(){ try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch{} }
+
+function save(){
+  try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch{}
+  // Sync to Firebase
+  if(window._fbSave){ _ignoreNext=true; window._fbSave(data); }
+}
+
+// Escuchar cambios en tiempo real desde Firebase
+function startSync(){
+  if(!window._fbListen) return;
+  window._fbListen((remoteData) => {
+    if(_ignoreNext){ _ignoreNext=false; return; }
+    data = remoteData;
+    try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch{}
+    render();
+    renderMobile();
+  });
+}
 
 // ── Color helpers ───────────────────────────────────────────────────────────
 function hex2rgba(hex, a){
@@ -900,6 +950,8 @@ document.getElementById('mobileDay').addEventListener('touchend', e=>{
 load();
 render();
 renderMobile();
+// Start Firebase sync after a tick (module script loads async)
+setTimeout(startSync, 500);
 
 // ── Service Worker (offline) ─────────────────────────────────────────────────
 if('serviceWorker' in navigator){
