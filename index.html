@@ -573,7 +573,7 @@ td.td-col{background:rgba(201,168,240,.04);}
     <div class="fld">
       <label>Horario</label>
       <div class="time-row">
-        <span class="time-start" id="mStart">—</span>
+        <select class="dur-sel" id="mStart" style="flex:0 0 auto;min-width:80px;" onchange="onStartChange()"></select>
         <span style="color:var(--text2);font-size:.85rem;flex-shrink:0;">→</span>
         <select class="dur-sel" id="mDur"></select>
       </div>
@@ -711,6 +711,23 @@ function populateDurSel(startSlot,existingDur){
   }
   if(!sel.value&&sel.options[3])sel.options[3].selected=true;
 }
+function populateStartSel(selectedSlot){
+  const sel=document.getElementById('mStart');
+  sel.innerHTML='';
+  SLOTS.forEach((s,i)=>{
+    const opt=document.createElement('option');
+    opt.value=i;
+    opt.textContent=s;
+    if(s===selectedSlot)opt.selected=true;
+    sel.appendChild(opt);
+  });
+}
+window.onStartChange=function(){
+  const idx=parseInt(document.getElementById('mStart').value);
+  curRow=idx;
+  const slot=SLOTS[idx]||'7:00';
+  populateDurSel(slot,60);
+};
 function renderDayChips(defaultCol){
   selDays=[defaultCol];
   document.getElementById('dayChips').innerHTML=
@@ -1073,7 +1090,7 @@ function openModal(row,col,owner,key){
   const existing=owner==='cynthia'?cynD[eKey]:owner==='efren'?efrD[eKey]:null;
   document.getElementById('mTitle').textContent=existing?'Editar actividad':'Nueva actividad';
   document.getElementById('mName').value=existing?.t||'';
-  document.getElementById('mStart').textContent=slot||'—';
+  populateStartSel(slot||'7:00');
   populateDurSel(slot||'7:00',existing?.dur||60);
   document.getElementById('mDel').style.display=existing&&!existing.shared?'block':'none';
   document.getElementById('daysField').style.display=existing?'none':'';
@@ -1104,7 +1121,7 @@ window.saveEvt=function(){
   const dur=parseInt(document.getElementById('mDur').value)||60;
   const shared=fw==='both';
   const entry={t:name,c:selC,owner:me,shared,dur};
-  const row=curRow;
+  const row=parseInt(document.getElementById('mStart').value)||curRow;
   const sp=Math.ceil(dur/60);
   // If editing, only update current key; if new, write to all selDays
   const days=eOwner?[parseInt(eKey.split('-')[1])]:selDays;
