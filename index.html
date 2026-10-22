@@ -574,15 +574,8 @@ td.td-col{background:rgba(201,168,240,.04);}
       <label>Horario</label>
       <div class="time-row">
         <span class="time-start" id="mStart">—</span>
-        <select class="dur-sel" id="mDur">
-          <option value="15">¼  —  15 min</option>
-          <option value="30">½  —  30 min</option>
-          <option value="60" selected>1 hora</option>
-          <option value="90">1½ horas</option>
-          <option value="120">2 horas</option>
-          <option value="150">2½ horas</option>
-          <option value="180">3 horas</option>
-        </select>
+        <span style="color:var(--text2);font-size:.85rem;flex-shrink:0;">→</span>
+        <select class="dur-sel" id="mDur"></select>
       </div>
     </div>
     <div class="fld" id="daysField">
@@ -694,6 +687,29 @@ function durLabel(m){
   if(m===45)return'¾';
   if(m%60===0&&m>0)return`${m/60}h`;
   return`${Math.floor(m/60)}h${m%60}`;
+}
+function populateDurSel(startSlot,existingDur){
+  const parts=startSlot.split(':');
+  const startMin=parseInt(parts[0])*60+(parseInt(parts[1])||0);
+  const sel=document.getElementById('mDur');
+  sel.innerHTML='';
+  const defaultDur=existingDur||60;
+  for(let endMin=startMin+15;endMin<=23*60+45;endMin+=15){
+    const dur=endMin-startMin;
+    const eh=Math.floor(endMin/60);
+    const em=(endMin%60).toString().padStart(2,'0');
+    const endStr=`${eh}:${em}`;
+    let durStr;
+    if(dur<60)durStr=`${dur} min`;
+    else if(dur%60===0)durStr=`${dur/60}h`;
+    else durStr=`${Math.floor(dur/60)}h ${dur%60}min`;
+    const opt=document.createElement('option');
+    opt.value=dur;
+    opt.textContent=`${endStr}  (${durStr})`;
+    if(dur===defaultDur)opt.selected=true;
+    sel.appendChild(opt);
+  }
+  if(!sel.value&&sel.options[3])sel.options[3].selected=true;
 }
 function renderDayChips(defaultCol){
   selDays=[defaultCol];
@@ -1058,7 +1074,7 @@ function openModal(row,col,owner,key){
   document.getElementById('mTitle').textContent=existing?'Editar actividad':'Nueva actividad';
   document.getElementById('mName').value=existing?.t||'';
   document.getElementById('mStart').textContent=slot||'—';
-  document.getElementById('mDur').value=String(existing?.dur||60);
+  populateDurSel(slot||'7:00',existing?.dur||60);
   document.getElementById('mDel').style.display=existing&&!existing.shared?'block':'none';
   document.getElementById('daysField').style.display=existing?'none':'';
   selC=existing?.c||PALETTE[0];
