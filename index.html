@@ -385,9 +385,8 @@ const FB={
   appId:"1:146413079594:web:eb10c22794cdb12634c753"
 };
 const db=getFirestore(initializeApp(FB));
-const cynRef=doc(db,'horario','cynthia');
-const efrRef=doc(db,'horario','efren');
-const oldRef=doc(db,'horario','semana');
+// Todo en el mismo documento que ya existe con permisos abiertos
+const semRef=doc(db,'horario','semana');
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -399,7 +398,6 @@ const PALETTE=['#f5c8d8','#c9b8f0','#a8d8c0','#f0c8a0','#b8d8f0','#f0b8c8','#c8e
 let cynD={},efrD={};
 let me=localStorage.getItem('horario_user'); // 'cynthia'|'efren'
 let mCol=todayCol();
-let skipCyn=false,skipEfr=false;
 
 // modal
 let eKey=null,eOwner=null,selC=PALETTE[0],fw='me';
@@ -458,56 +456,63 @@ window.promptSwitch=function(){
   if(confirm(`¿Cambiar a ${label(o)} ${emo(o)}?\n\nPodrás ver y editar tu horario.`))setUser(o);
 };
 
-// ── Save / Sync ───────────────────────────────────────────────────────────
-async function saveWho(who,data){
-  const ref=who==='cynthia'?cynRef:efrRef;
-  try{await setDoc(ref,{data:JSON.stringify(data)});}catch(e){console.error(e);}
+// ── Save / Sync — todo en /horario/semana con campos cynthia + efren ──────
+let skipNext=false;
+
+async function persistAll(){
+  const payload={cynthia:JSON.stringify(cynD),efren:JSON.stringify(efrD)};
+  try{await setDoc(semRef,payload,{merge:true});}catch(e){console.error('save',e);}
 }
-function saveCyn(){localStorage.setItem('h_cyn',JSON.stringify(cynD));skipCyn=true;saveWho('cynthia',cynD);}
-function saveEfr(){localStorage.setItem('h_efr',JSON.stringify(efrD));skipEfr=true;saveWho('efren',efrD);}
+function saveCyn(){
+  localStorage.setItem('h_cyn',JSON.stringify(cynD));
+  skipNext=true; persistAll();
+}
+function saveEfr(){
+  localStorage.setItem('h_efr',JSON.stringify(efrD));
+  skipNext=true; persistAll();
+}
 
 try{cynD=JSON.parse(localStorage.getItem('h_cyn')||'{}');}catch{}
 try{efrD=JSON.parse(localStorage.getItem('h_efr')||'{}');}catch{}
 
 async function startSync(){
-  // Load data directly first (getDoc), then set up live listeners
+  // Direct read first
   try{
-    const cynSnap=await getDoc(cynRef);
-    if(cynSnap.exists()){
-      cynD=JSON.parse(cynSnap.data().data);
-      localStorage.setItem('h_cyn',JSON.stringify(cynD));
-    } else {
-      // Migrate from old /horario/semana
-      const oldSnap=await getDoc(oldRef);
-      if(oldSnap.exists()){
-        const old=JSON.parse(oldSnap.data().data);
-        Object.keys(old).forEach(k=>{old[k].owner='cynthia';});
-        cynD=old;
-        await setDoc(cynRef,{data:JSON.stringify(cynD)});
-        localStorage.setItem('h_cyn',JSON.stringify(cynD));
-        toast('Horario de Cynthia recuperado ✨');
+    const snap=await getDoc(semRef);
+    if(snap.exists()){
+      const d=snap.data();
+      // New format: fields cynthia / efren
+      if(d.cynthia){
+        try{cynD=JSON.parse(d.cynthia);localStorage.setItem('h_cyn',JSON.stringify(cynD));}catch{}
+      } else if(d.data){
+        // Old format: migrate data → cynthia field
+        try{
+          const old=JSON.parse(d.data);
+          Object.keys(old).forEach(k=>{if(typeof old[k]==='object')old[k].owner='cynthia';});
+          cynD=old;
+          localStorage.setItem('h_cyn',JSON.stringify(cynD));
+          // Save migrated data back
+          await setDoc(semRef,{cynthia:JSON.stringify(cynD)},{merge:true});
+          toast('Horario recuperado ✨');
+        }catch(e){console.error('migrate',e);}
+      }
+      if(d.efren){
+        try{efrD=JSON.parse(d.efren);localStorage.setItem('h_efr',JSON.stringify(efrD));}catch{}
       }
     }
-  }catch(e){console.error('cyn load',e);}
-
-  try{
-    const efrSnap=await getDoc(efrRef);
-    if(efrSnap.exists()){
-      efrD=JSON.parse(efrSnap.data().data);
-      localStorage.setItem('h_efr',JSON.stringify(efrD));
-    }
-  }catch(e){console.error('efr load',e);}
+  }catch(e){console.error('startSync getDoc',e);}
 
   render();renderM();
 
-  // Live listeners for real-time sync
-  onSnapshot(cynRef,snap=>{
-    if(skipCyn){skipCyn=false;return;}
-    if(snap.exists())try{cynD=JSON.parse(snap.data().data);localStorage.setItem('h_cyn',JSON.stringify(cynD));render();renderM();}catch{}
-  });
-  onSnapshot(efrRef,snap=>{
-    if(skipEfr){skipEfr=false;return;}
-    if(snap.exists())try{efrD=JSON.parse(snap.data().data);localStorage.setItem('h_efr',JSON.stringify(efrD));render();renderM();}catch{}
+  // Live listener
+  onSnapshot(semRef,snap=>{
+    if(skipNext){skipNext=false;return;}
+    if(!snap.exists())return;
+    const d=snap.data();
+    let changed=false;
+    if(d.cynthia)try{cynD=JSON.parse(d.cynthia);localStorage.setItem('h_cyn',JSON.stringify(cynD));changed=true;}catch{}
+    if(d.efren)try{efrD=JSON.parse(d.efren);localStorage.setItem('h_efr',JSON.stringify(efrD));changed=true;}catch{}
+    if(changed){render();renderM();}
   });
 }
 
