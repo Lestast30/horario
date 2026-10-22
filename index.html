@@ -390,6 +390,41 @@ td.td-col{background:rgba(201,168,240,.04);}
   .mday-dots{display:none;}
 }
 
+/* ── SETTINGS MENU ──────────────────────────────── */
+.settings-menu{
+  position:fixed;inset:0;z-index:150;
+  background:rgba(70,50,100,.22);backdrop-filter:blur(6px);
+  display:flex;align-items:flex-end;justify-content:center;
+}
+@media(min-width:500px){.settings-menu{align-items:center;padding:20px;}}
+.settings-card{
+  background:white;border-radius:24px 24px 0 0;
+  padding:20px 18px 40px;width:100%;max-width:380px;
+  box-shadow:0 -4px 48px rgba(100,70,140,.15);
+}
+@media(min-width:500px){.settings-card{border-radius:24px;padding:26px;}}
+.settings-card h3{
+  font-family:'Fraunces',serif;font-weight:300;font-size:1.1rem;
+  color:var(--text);margin-bottom:16px;
+}
+.s-btn{
+  display:flex;align-items:center;gap:10px;
+  width:100%;padding:13px 16px;margin-bottom:8px;
+  background:var(--surface2);border:1.5px solid var(--border);
+  border-radius:12px;font-family:inherit;font-size:.9rem;
+  color:var(--text);cursor:pointer;text-align:left;transition:background .12s;
+}
+.s-btn:hover{background:#f0e8ff;}
+.s-btn.danger{color:#d05060;border-color:#f0c0c0;background:#fff8f8;}
+.s-btn.danger:hover{background:#fff0f0;}
+.s-close{
+  width:100%;padding:11px;border-radius:12px;
+  border:1.5px solid var(--border);background:white;
+  font-family:inherit;font-size:.88rem;font-weight:500;
+  color:var(--text2);cursor:pointer;margin-top:6px;
+}
+.s-close:hover{background:var(--surface2);}
+
 /* ── TOAST ───────────────────────────────────────── */
 #toast{
   position:fixed;bottom:28px;left:50%;
@@ -429,11 +464,14 @@ td.td-col{background:rgba(201,168,240,.04);}
 <div id="app" style="display:none">
   <header>
     <div class="h-title">mi semana 🌸</div>
-    <button class="user-pill" id="userPill" onclick="promptSwitch()">
-      <span id="uEmoji">🌸</span>
-      <span id="uName">Cynthia</span>
-      <span style="opacity:.35;font-size:.75rem">▾</span>
-    </button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="user-pill" id="userPill" onclick="promptSwitch()">
+        <span id="uEmoji">🌸</span>
+        <span id="uName">Cynthia</span>
+        <span style="opacity:.35;font-size:.75rem">▾</span>
+      </button>
+      <button class="user-pill" onclick="openSettings()" title="Ajustes" style="padding:6px 10px;font-size:1rem">⚙️</button>
+    </div>
   </header>
 
   <!-- View tabs -->
@@ -532,6 +570,17 @@ td.td-col{background:rgba(201,168,240,.04);}
   </div>
 </div>
 
+<!-- ── SETTINGS MENU ──────────────────────────────────────── -->
+<div class="settings-menu" id="settingsMenu" style="display:none" onclick="settingsOverlayClick(event)">
+  <div class="settings-card">
+    <h3>⚙️ Ajustes</h3>
+    <button class="s-btn" onclick="exportData()">📋 Exportar datos (JSON)</button>
+    <button class="s-btn danger" onclick="clearMyData()">🗑 Limpiar <em>mi</em> horario</button>
+    <button class="s-btn danger" onclick="clearAllData()">⚠️ Limpiar <em>todo</em> el horario</button>
+    <button class="s-close" onclick="closeSettings()">Cerrar</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script type="module">
@@ -614,22 +663,7 @@ function colEntries(data,col){
   return out;
 }
 
-// ── Data migration: old SLOTS had null at index 6, making afternoon rows start at 7
-// New SLOTS has no null; 13:00-17:00 inserted at rows 6-10; afternoon rows shift +4
-function migrateOldRows(data){
-  const hasOld=Object.keys(data).some(k=>{
-    const row=parseInt(k.split('-')[0]);
-    return row>=7&&row<=11;
-  });
-  if(!hasOld)return null; // nothing to migrate
-  const migrated={};
-  Object.keys(data).forEach(k=>{
-    const[row,col]=k.split('-').map(Number);
-    const newRow=row>=7?row+4:row;
-    migrated[`${newRow}-${col}`]=data[k];
-  });
-  return migrated;
-}
+// (migration removed — data is re-entered cleanly with new SLOTS)
 
 // ── Identity ──────────────────────────────────────────────────────────────
 window.setUser=function(who){
@@ -679,14 +713,8 @@ async function startSync(){
     }
   }catch(e){console.error('startSync',e);}
 
-  // Migrate old row indices (null slot removed, afternoon shifts +4)
-  const cynM=migrateOldRows(cynD);
-  const efrM=migrateOldRows(efrD);
-  if(cynM){cynD=cynM;localStorage.setItem('h_cyn',JSON.stringify(cynD));skipNext=true;persistAll();toast('Horario actualizado ✨');}
-  else localStorage.setItem('h_cyn',JSON.stringify(cynD));
-  if(efrM){efrD=efrM;localStorage.setItem('h_efr',JSON.stringify(efrD));}
-  else localStorage.setItem('h_efr',JSON.stringify(efrD));
-
+  localStorage.setItem('h_cyn',JSON.stringify(cynD));
+  localStorage.setItem('h_efr',JSON.stringify(efrD));
   renderAll();
 
   onSnapshot(semRef,snap=>{
@@ -1026,6 +1054,42 @@ window.deleteEvt=function(){
     else{delete efrD[eKey];saveEfr();}
     renderAll();toast('Eliminado 🌱');
   }
+};
+
+// ── Settings ──────────────────────────────────────────────────────────────
+window.openSettings=function(){document.getElementById('settingsMenu').style.display='flex';};
+window.closeSettings=function(){document.getElementById('settingsMenu').style.display='none';};
+window.settingsOverlayClick=function(e){if(e.target===document.getElementById('settingsMenu'))closeSettings();};
+
+window.clearMyData=function(){
+  if(!confirm(`¿Limpiar TODO el horario de ${label(me)} ${emo(me)}?\n\nEsta acción no se puede deshacer.`))return;
+  closeSettings();
+  if(me==='cynthia'){cynD={};saveCyn();}
+  else{efrD={};saveEfr();}
+  renderAll();
+  toast(`Horario de ${label(me)} limpiado 🌱`);
+};
+
+window.clearAllData=function(){
+  if(!confirm('⚠️ ¿Limpiar el horario de TODOS (Cynthia y Efrén)?\n\nEsta acción no se puede deshacer.'))return;
+  closeSettings();
+  cynD={};efrD={};
+  localStorage.removeItem('h_cyn');localStorage.removeItem('h_efr');
+  skipNext=true;
+  setDoc(semRef,{cynthia:'{}',efren:'{}'},{ merge:false }).catch(console.error);
+  renderAll();
+  toast('Horario limpiado 🌱');
+};
+
+window.exportData=function(){
+  const payload={cynthia:cynD,efren:efrD};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='mi-semana-backup.json';a.click();
+  URL.revokeObjectURL(url);
+  closeSettings();
+  toast('Backup descargado 📋');
 };
 
 // ── Day nav (week mobile) ─────────────────────────────────────────────────
