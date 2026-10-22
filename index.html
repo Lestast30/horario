@@ -712,20 +712,34 @@ function populateDurSel(startSlot,existingDur){
   if(!sel.value&&sel.options[3])sel.options[3].selected=true;
 }
 function populateStartSel(selectedSlot){
+  const parts=selectedSlot.split(':');
+  const selMin=parseInt(parts[0])*60+(parseInt(parts[1])||0);
   const sel=document.getElementById('mStart');
   sel.innerHTML='';
-  SLOTS.forEach((s,i)=>{
+  for(let m=0;m<=23*60+45;m+=15){
+    const h=Math.floor(m/60);
+    const min=(m%60).toString().padStart(2,'0');
+    const label=`${h}:${min}`;
     const opt=document.createElement('option');
-    opt.value=i;
-    opt.textContent=s;
-    if(s===selectedSlot)opt.selected=true;
+    opt.value=m;
+    opt.textContent=label;
+    if(m===selMin)opt.selected=true;
     sel.appendChild(opt);
-  });
+  }
 }
 window.onStartChange=function(){
-  const idx=parseInt(document.getElementById('mStart').value);
-  curRow=idx;
-  const slot=SLOTS[idx]||'7:00';
+  const startMin=parseInt(document.getElementById('mStart').value);
+  const h=Math.floor(startMin/60);
+  const min=(startMin%60).toString().padStart(2,'0');
+  const slot=`${h}:${min}`;
+  // Update curRow to nearest SLOT
+  let nearest=0,best=Infinity;
+  SLOTS.forEach((s,i)=>{
+    const sp=s.split(':');
+    const sm=parseInt(sp[0])*60+(parseInt(sp[1])||0);
+    if(Math.abs(sm-startMin)<best){best=Math.abs(sm-startMin);nearest=i;}
+  });
+  curRow=nearest;
   populateDurSel(slot,60);
 };
 function renderDayChips(defaultCol){
@@ -1090,8 +1104,9 @@ function openModal(row,col,owner,key){
   const existing=owner==='cynthia'?cynD[eKey]:owner==='efren'?efrD[eKey]:null;
   document.getElementById('mTitle').textContent=existing?'Editar actividad':'Nueva actividad';
   document.getElementById('mName').value=existing?.t||'';
-  populateStartSel(slot||'7:00');
-  populateDurSel(slot||'7:00',existing?.dur||60);
+  const startSlot=slot||'7:00';
+  populateStartSel(startSlot);
+  populateDurSel(startSlot,existing?.dur||60);
   document.getElementById('mDel').style.display=existing&&!existing.shared?'block':'none';
   document.getElementById('daysField').style.display=existing?'none':'';
   selC=existing?.c||PALETTE[0];
@@ -1121,7 +1136,11 @@ window.saveEvt=function(){
   const dur=parseInt(document.getElementById('mDur').value)||60;
   const shared=fw==='both';
   const entry={t:name,c:selC,owner:me,shared,dur};
-  const row=parseInt(document.getElementById('mStart').value)||curRow;
+  // Find the SLOT row closest to the selected start time
+  const startMin=parseInt(document.getElementById('mStart').value)||0;
+  let row=curRow;
+  let best=Infinity;
+  SLOTS.forEach((s,i)=>{const sp=s.split(':');const sm=parseInt(sp[0])*60+(parseInt(sp[1])||0);if(Math.abs(sm-startMin)<best){best=Math.abs(sm-startMin);row=i;}});
   const sp=Math.ceil(dur/60);
   // If editing, only update current key; if new, write to all selDays
   const days=eOwner?[parseInt(eKey.split('-')[1])]:selDays;
