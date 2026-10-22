@@ -436,6 +436,29 @@ td.td-col{background:rgba(201,168,240,.04);}
   z-index:300;pointer-events:none;white-space:nowrap;
 }
 #toast.show{transform:translateX(-50%) translateY(0);}
+
+/* ── DURATION & DAY CHIPS ───────────────────────────── */
+.dur-sel{
+  flex:1;padding:8px 12px;background:var(--surface2);
+  border:1.5px solid var(--border);border-radius:10px;
+  font-size:.9rem;font-family:inherit;color:var(--text);
+  outline:none;cursor:pointer;transition:border-color .15s;
+  -webkit-appearance:none;appearance:none;
+}
+.dur-sel:focus{border-color:var(--accent);}
+.dur-badge{
+  font-size:.6rem;font-weight:700;opacity:.8;
+  background:rgba(255,255,255,.55);padding:1px 4px;
+  border-radius:3px;flex-shrink:0;margin-left:2px;
+}
+.day-chips{display:flex;gap:6px;flex-wrap:wrap;}
+.day-chip{
+  padding:5px 11px;border-radius:20px;
+  border:1.5px solid var(--border);background:white;
+  font-family:inherit;font-size:.78rem;font-weight:500;
+  color:var(--text2);cursor:pointer;transition:all .14s;
+}
+.day-chip.on{border-color:var(--accent);background:var(--surface2);color:var(--text);}
 </style>
 </head>
 <body>
@@ -551,9 +574,20 @@ td.td-col{background:rgba(201,168,240,.04);}
       <label>Horario</label>
       <div class="time-row">
         <span class="time-start" id="mStart">—</span>
-        <span class="time-sep">→</span>
-        <input type="time" id="mEnd" placeholder="hora fin (opcional)">
+        <select class="dur-sel" id="mDur">
+          <option value="15">¼  —  15 min</option>
+          <option value="30">½  —  30 min</option>
+          <option value="60" selected>1 hora</option>
+          <option value="90">1½ horas</option>
+          <option value="120">2 horas</option>
+          <option value="150">2½ horas</option>
+          <option value="180">3 horas</option>
+        </select>
       </div>
+    </div>
+    <div class="fld" id="daysField">
+      <label>Repetir en</label>
+      <div class="day-chips" id="dayChips"></div>
     </div>
     <div class="fld">
       <label>¿Para quién?</label>
@@ -620,6 +654,7 @@ let yvYear=new Date().getFullYear(); // year view
 let currentView='week';
 
 let eKey=null,eOwner=null,selC=PALETTE[0],fw='me';
+let selDays=[],curRow=0;
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function todayCol(){const d=new Date().getDay();return d===0?6:d-1;}
@@ -652,6 +687,24 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'),2500);
 }
 function slotForRow(row){return SLOTS[row]||'';}
+
+function durLabel(m){
+  if(m===15)return'¼';
+  if(m===30)return'½';
+  if(m===45)return'¾';
+  if(m%60===0&&m>0)return`${m/60}h`;
+  return`${Math.floor(m/60)}h${m%60}`;
+}
+function renderDayChips(defaultCol){
+  selDays=[defaultCol];
+  document.getElementById('dayChips').innerHTML=
+    DAYS.map((d,i)=>`<button class="day-chip${i===defaultCol?' on':''}" onclick="toggleDay(${i},this)">${d}</button>`).join('');
+}
+window.toggleDay=function(col,btn){
+  const idx=selDays.indexOf(col);
+  if(idx>-1){if(selDays.length>1){selDays.splice(idx,1);btn.classList.remove('on');}}
+  else{selDays.push(col);btn.classList.add('on');}
+};
 
 // Get all entries for a given column (day of week)
 function colEntries(data,col){
@@ -753,6 +806,18 @@ window.switchView=function(v,btn){
 function render(){
   const tbl=document.getElementById('tbl');
   const td=todayCol();
+  // Build span + occupied maps for rowspan support
+  const spanMap={},occ={};
+  SLOTS.forEach((s,i)=>{
+    for(let col=0;col<7;col++){
+      const k=`${i}-${col}`;
+      const ce=cynD[k],ee=efrD[k];
+      if(!ce&&!ee)return;
+      const maxDur=Math.max(ce?.dur||60,ee?.dur||60);
+      const sp=Math.min(Math.ceil(maxDur/60),SLOTS.length-i);
+      if(sp>1){spanMap[k]=sp;for(let r=i+1;r<i+sp;r++)occ[`${r}-${col}`]=true;}
+    }
+  });
   let h='<tr><th class="tc"></th>';
   DAYS.forEach((d,i)=>{h+=`<th class="${i===td?'td':''}${i===td?' td':''}">${d}</th>`;});
   h+='</tr>';
@@ -760,12 +825,15 @@ function render(){
     h+='<tr>';
     h+=`<td class="tc">${s}</td>`;
     for(let col=0;col<7;col++){
+      if(occ[`${i}-${col}`])continue; // covered by rowspan above
+      const k=`${i}-${col}`;
+      const ce=cynD[k],ee=efrD[k];
+      const rs=spanMap[k]||1;
+      const rsA=rs>1?` rowspan="${rs}"`:'';
       const tdCls=col===td?'td-col':'';
-      const cynEnt=cynD[`${i}-${col}`];
-      const efrEnt=efrD[`${i}-${col}`];
-      h+=`<td class="${tdCls}" onclick="cellCk(${i},${col},event)">`;
-      if(cynEnt)h+=cellEvt(cynEnt,i,col,'cynthia');
-      if(efrEnt)h+=cellEvt(efrEnt,i,col,'efren');
+      h+=`<td class="${tdCls}"${rsA} onclick="cellCk(${i},${col},event)">`;
+      if(ce)h+=cellEvt(ce,i,col,'cynthia');
+      if(ee)h+=cellEvt(ee,i,col,'efren');
       h+='</td>';
     }
     h+='</tr>';
@@ -779,9 +847,9 @@ function cellEvt(e,row,col,owner){
   const oth=canE?'':'other';
   const clk=canE?`onclick="openEdit('${owner}','${row}-${col}',event)"`:'onclick="otherTap(event)"';
   const del=canE&&!e.shared?`<span class="cdel" onclick="delCell(event,'${owner}','${row}-${col}')">✕</span>`:'';
-  const end=e.endTime?`<span class="clock">${e.endTime}</span>`:'';
+  const db=(e.dur&&e.dur!==60)?`<span class="dur-badge">${durLabel(e.dur)}</span>`:'';
   return`<div class="cev ${oth}" style="background:${bg};color:${txt}" ${clk}>
-    <span>${emoji(e.t)}</span><span class="cn">${e.t}${lk}</span>${end}${del}
+    <span>${emoji(e.t)}</span><span class="cn">${e.t}${lk}</span>${db}${del}
   </div>`;
 }
 
@@ -984,16 +1052,19 @@ window.openEdit=function(owner,key,e){
 function openModal(row,col,owner,key){
   eKey=key||`${row}-${col}`;
   eOwner=owner;
+  curRow=row;
   const slot=slotForRow(row);
   const existing=owner==='cynthia'?cynD[eKey]:owner==='efren'?efrD[eKey]:null;
   document.getElementById('mTitle').textContent=existing?'Editar actividad':'Nueva actividad';
   document.getElementById('mName').value=existing?.t||'';
   document.getElementById('mStart').textContent=slot||'—';
-  document.getElementById('mEnd').value=existing?.endTime||'';
+  document.getElementById('mDur').value=String(existing?.dur||60);
   document.getElementById('mDel').style.display=existing&&!existing.shared?'block':'none';
+  document.getElementById('daysField').style.display=existing?'none':'';
   selC=existing?.c||PALETTE[0];
   fw=existing?.shared?'both':'me';
   renderSw();
+  renderDayChips(col);
   document.querySelectorAll('.fw-btn').forEach(b=>b.classList.toggle('on',b.dataset.v===fw));
   document.getElementById('ov').style.display='flex';
   setTimeout(()=>document.getElementById('mName').focus(),100);
@@ -1014,20 +1085,35 @@ window.pickC=function(c){selC=c;renderSw();};
 window.saveEvt=function(){
   const name=document.getElementById('mName').value.trim();
   if(!name){document.getElementById('mName').focus();return;}
-  const endTime=document.getElementById('mEnd').value;
+  const dur=parseInt(document.getElementById('mDur').value)||60;
   const shared=fw==='both';
-  const entry={t:name,c:selC,owner:me,shared};
-  if(endTime)entry.endTime=endTime;
-  const key=eKey;
-  if(me==='cynthia'){cynD[key]=entry;saveCyn();}
-  else{efrD[key]=entry;saveEfr();}
-  if(shared){
-    const copy={...entry};
-    if(me==='cynthia'){efrD[key]=copy;saveEfr();}
-    else{cynD[key]=copy;saveCyn();}
+  const entry={t:name,c:selC,owner:me,shared,dur};
+  const row=curRow;
+  const sp=Math.ceil(dur/60);
+  // If editing, only update current key; if new, write to all selDays
+  const days=eOwner?[parseInt(eKey.split('-')[1])]:selDays;
+
+  function writeToData(data,col){
+    const k=`${row}-${col}`;
+    data[k]={...entry};
+    // Clear slots covered by this span
+    for(let r=row+1;r<row+sp&&r<SLOTS.length;r++)delete data[`${r}-${col}`];
   }
+
+  days.forEach(col=>{
+    if(me==='cynthia')writeToData(cynD,col);
+    else writeToData(efrD,col);
+    if(shared){
+      if(me==='cynthia')writeToData(efrD,col);
+      else writeToData(cynD,col);
+    }
+  });
+
+  if(me==='cynthia')saveCyn(); else saveEfr();
+  if(shared){if(me==='cynthia')saveEfr(); else saveCyn();}
   closeModal();renderAll();
-  toast(shared?'Guardado para los dos 🌸🌿':'Guardado ✨');
+  const multi=days.length>1?` (${days.length} días)`:'';
+  toast(shared?`Guardado para los dos 🌸🌿`:`Guardado${multi} ✨`);
 };
 
 window.delCell=function(e,owner,key){
