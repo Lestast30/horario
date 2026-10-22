@@ -469,33 +469,45 @@ function saveEfr(){localStorage.setItem('h_efr',JSON.stringify(efrD));skipEfr=tr
 try{cynD=JSON.parse(localStorage.getItem('h_cyn')||'{}');}catch{}
 try{efrD=JSON.parse(localStorage.getItem('h_efr')||'{}');}catch{}
 
-function startSync(){
-  // Cynthia's doc — migrate from old /horario/semana if empty
-  onSnapshot(cynRef,async snap=>{
-    if(skipCyn){skipCyn=false;return;}
-    if(snap.exists()){
-      try{cynD=JSON.parse(snap.data().data);localStorage.setItem('h_cyn',JSON.stringify(cynD));}catch{}
+async function startSync(){
+  // Load data directly first (getDoc), then set up live listeners
+  try{
+    const cynSnap=await getDoc(cynRef);
+    if(cynSnap.exists()){
+      cynD=JSON.parse(cynSnap.data().data);
+      localStorage.setItem('h_cyn',JSON.stringify(cynD));
     } else {
-      // Migrate old data to cynthia's schedule
-      try{
-        const old=await getDoc(oldRef);
-        if(old.exists()){
-          const oldData=JSON.parse(old.data().data);
-          Object.keys(oldData).forEach(k=>{oldData[k].owner='cynthia';});
-          cynD=oldData;
-          await setDoc(cynRef,{data:JSON.stringify(cynD)});
-          localStorage.setItem('h_cyn',JSON.stringify(cynD));
-        }
-      }catch{}
+      // Migrate from old /horario/semana
+      const oldSnap=await getDoc(oldRef);
+      if(oldSnap.exists()){
+        const old=JSON.parse(oldSnap.data().data);
+        Object.keys(old).forEach(k=>{old[k].owner='cynthia';});
+        cynD=old;
+        await setDoc(cynRef,{data:JSON.stringify(cynD)});
+        localStorage.setItem('h_cyn',JSON.stringify(cynD));
+        toast('Horario de Cynthia recuperado ✨');
+      }
     }
-    render();renderM();
+  }catch(e){console.error('cyn load',e);}
+
+  try{
+    const efrSnap=await getDoc(efrRef);
+    if(efrSnap.exists()){
+      efrD=JSON.parse(efrSnap.data().data);
+      localStorage.setItem('h_efr',JSON.stringify(efrD));
+    }
+  }catch(e){console.error('efr load',e);}
+
+  render();renderM();
+
+  // Live listeners for real-time sync
+  onSnapshot(cynRef,snap=>{
+    if(skipCyn){skipCyn=false;return;}
+    if(snap.exists())try{cynD=JSON.parse(snap.data().data);localStorage.setItem('h_cyn',JSON.stringify(cynD));render();renderM();}catch{}
   });
   onSnapshot(efrRef,snap=>{
     if(skipEfr){skipEfr=false;return;}
-    if(snap.exists()){
-      try{efrD=JSON.parse(snap.data().data);localStorage.setItem('h_efr',JSON.stringify(efrD));}catch{}
-    }
-    render();renderM();
+    if(snap.exists())try{efrD=JSON.parse(snap.data().data);localStorage.setItem('h_efr',JSON.stringify(efrD));render();renderM();}catch{}
   });
 }
 
